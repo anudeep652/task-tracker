@@ -1,0 +1,110 @@
+---
+- name: Set up Monitoring with Prometheus and Grafana
+  hosts: task_tracker
+  become: yes
+  gather_facts: no  # Skip facts gathering which requires Python 3.8+
+
+  vars:
+    monitoring_directory: /opt/monitoring
+    prometheus_port: 9090
+    grafana_port: 3000
+    node_exporter_port: 9100
+    cadvisor_port: 8080
+
+  tasks:
+    - name: Create monitoring directory
+      raw: mkdir -p {{ monitoring_directory }} && chown ec2-user:ec2-user {{ monitoring_directory }}
+
+    - name: Create Prometheus config directory
+      raw: mkdir -p {{ monitoring_directory }}/prometheus && chown ec2-user:ec2-user {{ monitoring_directory }}/prometheus
+
+    - name: Create Grafana provisioning directory
+      raw: mkdir -p {{ monitoring_directory }}/grafana/provisioning/datasources && chown -R ec2-user:ec2-user {{ monitoring_directory }}/grafana
+
+    - name: Copy Prometheus configuration
+      copy:
+        src: prometheus.yml.j2
+        dest: "{{ monitoring_directory }}/prometheus/prometheus.yml"
+        owner: ec2-user
+        group: ec2-user
+        mode: '0644'
+
+    - name: Copy Grafana datasource configuration
+      copy:
+        src: datasource.yml.j2
+        dest: "{{ monitoring_directory }}/grafana/provisioning/datasources/datasource.yml"
+        owner: ec2-user
+        group: ec2-user
+        mode: '0644'
+
+    # Create Docker network for monitoring
+    - name: Create monitoring network
+      raw: docker network create monitoring || true
+
+    # Stop and remove existing containers if they exist
+    - name: Stop and remove existing Prometheus container
+      raw: docker stop prometheus && docker rm prometheus
+      ignore_errors: yes
+
+    - name: Stop and remove existing Grafana container
+      raw: docker stop grafana && docker rm grafana
+      ignore_errors: yes
+
+    - name: Stop and remove existing Node Exporter container
+      raw: docker stop node-exporter && docker rm node-exporter
+      ignore_errors: yes
+
+    - name: Stop and remove existing cAdvisor container
+      raw: docker stop cadvisor && docker rm cadvisor
+      ignore_errors: yes
+
+    # Start containers
+    - name: Run Prometheus container
+      raw: >
+        docker run -d --name prometheus
+        --network monitoring
+        -p {{ prometheus_port }}:9090
+        -v {{ monitoring_directory }}/prometheus:/etc/prometheus
+        -v prometheus_data:/prometheus
+        --restart always
+        prom/prometheus
+        --config.file=/etc/prometheus/prometheus.yml
+        --storage.tsdb.path=/prometheus
+
+    - name: Run Node Exporter container
+      raw: >
+        docker run -d --name node-exporter
+        --network monitoring
+        -p {{ node_exporter_port }}:9100
+        -v /proc:/host/proc:ro
+        -v /sys:/host/sys:ro
+        -v /:/rootfs:ro
+        --restart always
+        prom/node-exporter
+        --path.procfs=/host/proc
+        --path.sysfs=/host/sys
+
+    - name: Run cAdvisor container
+      raw: >
+        docker run -d --name cadvisor
+        --network monitoring
+        -p {{ cadvisor_port }}:8080
+        -v /:/rootfs:ro
+        -v /var/run:/var/run:ro
+        -v /sys:/sys:ro
+        -v /var/lib/docker/:/var/lib/docker:ro
+        -v /dev/disk/:/dev/disk:ro
+        --restart always
+        gcr.io/cadvisor/cadvisor:latest
+
+    - name: Run Grafana container
+      raw: >
+        docker run -d --name grafana
+        --network monitoring
+        -p {{ grafana_port }}:3000
+        -v grafana_data:/var/lib/grafana
+        -v {{ monitoring_directory }}/grafana/provisioning:/etc/grafana/provisioning
+        -e "GF_SECURITY_ADMIN_PASSWORD=admin"
+        -e "GF_USERS_ALLOW_SIGN_UP=false"
+        --restart always
+        grafana/grafana

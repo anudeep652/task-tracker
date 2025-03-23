@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  app:
+    image: {{ docker_image }}
+    container_name: {{ container_name }}
+    restart: always
+    ports:
+      - "{{ app_port | default('8080') }}:{{ container_port | default('8080') }}"
+    {% if env_vars is defined %}
+    env_file:
+      - .env
+    {% endif %}
+    {% if volumes is defined %}
+    volumes:
+      {% for volume in volumes %}
+      - {{ volume }}
+      {% endfor %}
+    {% endif %}

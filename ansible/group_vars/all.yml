@@ -1,0 +1,13 @@
+# ansible/group_vars/all.yml
+---
+# Application settings
+app_name: task-tracker
+app_directory: /opt/{{ app_name }}
+monitoring_directory: /opt/monitoring
+
+# Docker settings
+docker_image: "{{ lookup('env', 'DOCKER_IMAGE') | default('task-tracker:latest') }}"
+docker_registry: "{{ lookup('env', 'ECR_REGISTRY') | default('') }}"
+
+# Environment settings
+deployment_environment: "{{ lookup('env', 'ENVIRONMENT') | default('production') }}"

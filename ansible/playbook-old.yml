@@ -1,0 +1,54 @@
+---
+- name: Configure Docker deployment on Amazon Linux 2
+  hosts: task_tracker
+  become: true
+  gather_facts: no  # Skip facts gathering which requires Python 3.8+
+  vars:
+    docker_image: "{{ dockerhub_username }}/task-tracker:latest"
+    container_name: "task-tracker"
+  
+  tasks:
+    # First detect OS
+    - name: Check if system is Amazon Linux
+      raw: cat /etc/os-release | grep -q 'ID="amzn"' && echo "Amazon" || echo "Not Amazon"
+      register: os_check
+      changed_when: false
+
+    - name: Update yum cache
+      raw: yum update -y
+      when: '"Amazon" in os_check.stdout'
+
+    - name: Install Python 3 and development tools
+      raw: yum install -y python3 python3-pip python3-devel gcc
+      when: '"Amazon" in os_check.stdout'
+
+    - name: Install Docker
+      raw: amazon-linux-extras install docker -y
+      when: '"Amazon" in os_check.stdout'
+
+    - name: Start Docker service
+      raw: systemctl start docker
+      when: '"Amazon" in os_check.stdout'
+
+    - name: Log in to Docker Hub
+      raw: docker login -u {{ dockerhub_username }} -p {{ dockerhub_token }}
+      no_log: true
+
+    - name: Pull Docker image
+      raw: docker pull {{ docker_image }}
+
+    - name: Check if container is already running
+      raw: docker ps -a --filter "name={{ container_name }}" --format '{% raw %}{{.Names}}{% endraw %}' | grep -q "{{ container_name }}" || echo "NotRunning"
+      register: container_running
+      changed_when: false
+
+    - name: Stop and remove existing container if it exists
+      raw: docker stop {{ container_name }} && docker rm {{ container_name }}
+      when: container_running.stdout != "NotRunning"
+      ignore_errors: yes
+
+    - name: Run Docker container
+      raw: docker run -d --name {{ container_name }} -p 80:80 --restart always {{ docker_image }}
+
+    - name: Ensure Docker service starts on boot
+      raw: systemctl enable docker

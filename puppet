@@ -1,0 +1,56 @@
+For Amazon Linux 2 specifically, let me adjust the Puppet manifest to ensure it works correctly:
+
+```puppet
+# /etc/puppetlabs/code/environments/production/manifests/python_setup.pp
+
+node default {
+  # Ensure exec commands use bash
+  Exec { path => '/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin' }
+  
+  # Install Python 3.8 using amazon-linux-extras for Amazon Linux 2
+  exec { 'install_python38':
+    command => '/usr/bin/amazon-linux-extras install python3.8 -y',
+    unless  => 'which python3.8',
+  }
+  
+  
+  # Ensure pip is available for Python 3.8
+  exec { 'ensure_pip3':
+    command => 'python3.8 -m ensurepip --upgrade',
+    require => Exec['install_python38'],
+    unless  => 'pip3.8 --version',
+  }
+  
+  # Uninstall urllib3 (if exists)
+  exec { 'uninstall_urllib3':
+    command => 'pip3.8 uninstall -y urllib3',
+    require => Exec['ensure_pip3'],
+    onlyif  => 'pip3.8 list | grep urllib3',
+  }
+  
+  # Install specific version of urllib3
+  exec { 'install_urllib3_specific_version':
+    command => 'pip3.8 install urllib3==1.26.6',
+    require => Exec['uninstall_urllib3'],
+  }
+}
+```
+
+## Setup Instructions for Amazon Linux 2:
+
+1. **Install Puppet on your Amazon Linux 2 instance**:
+   ```bash
+   sudo amazon-linux-extras install puppet
+   ```
+
+2. **Create the manifest file**:
+   ```bash
+   sudo mkdir -p /etc/puppetlabs/code/environments/production/manifests
+   sudo nano /etc/puppetlabs/code/environments/production/manifests/python_setup.pp
+   ```
+   Then paste the manifest code provided above.
+
+3. **Apply the Puppet manifest**:
+   ```bash
+   sudo puppet apply /etc/puppetlabs/code/environments/production/manifests/python_setup.pp
+   ```

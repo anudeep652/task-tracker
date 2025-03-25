@@ -25,31 +25,20 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/task-tracker:latest
 
-      - name: Send Datadog Notification
-        if: always()
-        uses: datadog/agent-github-action@v1
-        with:
-          api_key: ${{ secrets.DATADOG_API_KEY }}
-          app_key: ${{ secrets.DATADOG_APP_KEY }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Send Email Notification via Datadog
-        if: always()
+      - name: Send Datadog Event
+        if: always()  # Ensures the step runs regardless of job success/failure
         env:
           DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
         run: |
-          status=${{ job.status }}
-
           curl -X POST "https://api.datadoghq.com/api/v1/events" \
-            -H "Content-Type: application/json" \
-            -H "DD-API-KEY: $DATADOG_API_KEY" \
-            -d '{
-              "title": "Docker Image Push '${{ job.status }}' for task-tracker",
-              "text": "Docker image push workflow completed with status: '${{ job.status }}'\n\n' \
-                      'Repository: ${{ github.repository }}\n' \
-                      'Pushed Image: ${{ secrets.DOCKERHUB_USERNAME }}/task-tracker:latest\n' \
-                      'Commit: ${{ github.sha }}\n' \
-                      'Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              "alert_type": "'"$([ \"$status\" = \"success\" ] && echo \"success\" || echo \"error\")"'"
-            }'
+          -H "Content-Type: application/json" \
+          -H "DD-API-KEY: ${DATADOG_API_KEY}" \
+          -d @- <<EOF
+          {
+            "title": "GitHub Actions Workflow Completed",
+            "text": "Workflow run for ${{ github.repository }} completed with status: ${{ job.status }}",
+            "tags": ["github", "ci-cd", "status:${{ job.status }}"],
+            "alert_type": "${{ job.status == 'success' && 'success' || 'error' }}"
+          }
+          EOF
+

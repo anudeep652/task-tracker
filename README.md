@@ -1,4 +1,4 @@
-# Task Tracker - Cloud Automation web application
+# Task Tracker - Cloud Automation 
 
 # React + TypeScript + Vite
 
